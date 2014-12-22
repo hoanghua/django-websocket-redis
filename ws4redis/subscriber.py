@@ -14,17 +14,38 @@ class RedisSubscriber(RedisStore):
         self._subscription = None
         super(RedisSubscriber, self).__init__(connection)
 
+    def get_counter_key(self, facility):
+        prefix      = self.get_prefix()
+        return '{prefix}counter:{facility}'.format(prefix=prefix, facility=facility)
+
+    def user_connect(self, request):
+        facility    = self.get_facility(request)
+        counter_key = self.get_counter_key(facility)
+        self._connection.incr(counter_key)
+
+    def user_disconnect(self, request):
+        facility    = self.get_facility(request)
+        counter_key = self.get_counter_key(facility)
+        self._connection.decr(counter_key)
+
+    def get_online_users_from_facility(self, facility):
+        counter_key = self.get_counter_key(facility)
+        return int(self._connection.get(counter_key) or 0)
+
     def parse_response(self):
         """
         Parse a message response sent by the Redis datastore on a subscribed channel.
         """
         return self._subscription.parse_response()
 
+    def get_facility(self, request):
+        return request.path_info.replace(settings.WEBSOCKET_URL, '', 1)
+
     def set_pubsub_channels(self, request, channels):
         """
         Initialize the channels used for publishing and subscribing messages through the message queue.
         """
-        facility = request.path_info.replace(settings.WEBSOCKET_URL, '', 1)
+        facility = self.get_facility(request)
 
         # initialize publishers
         audience = {

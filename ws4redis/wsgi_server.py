@@ -26,6 +26,9 @@ class WebsocketWSGIServer(object):
         Subscriber = getattr(module, comps[-1])
         self.possible_channels = Subscriber.subscription_channels + Subscriber.publish_channels
         self._redis_connection = redis_connection and redis_connection or StrictRedis(**private_settings.WS4REDIS_CONNECTION)
+        counters = self._redis_connection.keys('*:counter:*')
+        if counters:
+            self._redis_connection.delete(*counters)
         self.Subscriber = Subscriber
 
     def assure_protocol_requirements(self, environ):
@@ -64,6 +67,7 @@ class WebsocketWSGIServer(object):
     def __call__(self, environ, start_response):
         """ Hijack the main loop from the original thread and listen on events on Redis and Websockets"""
         websocket = None
+        request = None
         subscriber = self.Subscriber(self._redis_connection)
         try:
             self.assure_protocol_requirements(environ)
@@ -75,6 +79,7 @@ class WebsocketWSGIServer(object):
             websocket = self.upgrade_websocket(environ, start_response)
             logger.debug('Subscribed to channels: {0}'.format(', '.join(channels)))
             subscriber.set_pubsub_channels(request, channels)
+            subscriber.user_connect(request)
             websocket_fd = websocket.get_file_descriptor()
             listening_fds = [websocket_fd]
             redis_fd = subscriber.get_file_descriptor()
@@ -118,6 +123,7 @@ class WebsocketWSGIServer(object):
         else:
             response = http.HttpResponse()
         if websocket:
+            subscriber.user_disconnect(request)
             websocket.close(code=1001, message='Websocket Closed')
         if hasattr(start_response, 'im_self') and not start_response.im_self.headers_sent:
             logger.warning('Staring late response on websocket')
