@@ -14,23 +14,29 @@ class RedisSubscriber(RedisStore):
         self._subscription = None
         super(RedisSubscriber, self).__init__(connection)
 
-    def get_counter_key(self, facility):
+    def get_online_subscriber_key(self, facility):
         prefix      = self.get_prefix()
-        return '{prefix}counter:{facility}'.format(prefix=prefix, facility=facility)
+        return '{prefix}online_subscribers:{facility}'.format(prefix=prefix, facility=facility)
 
     def user_connect(self, request):
+        if not request.session:
+            return
+        user_id     = request.session.get('_auth_user_id')
         facility    = self.get_facility(request)
-        counter_key = self.get_counter_key(facility)
-        self._connection.incr(counter_key)
+        key         = self.get_online_subscriber_key(facility)
+        self._connection.sadd(key, user_id)
 
     def user_disconnect(self, request):
+        if not request.session:
+            return
+        user_id     = request.session.get('_auth_user_id')
         facility    = self.get_facility(request)
-        counter_key = self.get_counter_key(facility)
-        self._connection.decr(counter_key)
+        key         = self.get_online_subscriber_key(facility)
+        self._connection.srem(key, user_id)
 
     def get_online_users_from_facility(self, facility):
-        counter_key = self.get_counter_key(facility)
-        return int(self._connection.get(counter_key) or 0)
+        key = self.get_online_subscriber_key(facility)
+        return self._connection.smembers(key)
 
     def parse_response(self):
         """
