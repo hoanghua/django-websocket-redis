@@ -21,7 +21,11 @@ class RedisSubscriber(RedisStore):
     def user_connect(self, request):
         if not request.session:
             return
+
         user_id     = request.session.get('_auth_user_id')
+        if not user_id:
+            return
+
         facility    = self.get_facility(request)
         key         = self.get_online_subscriber_key(facility)
         self._connection.sadd(key, user_id)
@@ -29,7 +33,11 @@ class RedisSubscriber(RedisStore):
     def user_disconnect(self, request):
         if not request.session:
             return
+
         user_id     = request.session.get('_auth_user_id')
+        if not user_id:
+            return
+
         facility    = self.get_facility(request)
         key         = self.get_online_subscriber_key(facility)
         self._connection.srem(key, user_id)
